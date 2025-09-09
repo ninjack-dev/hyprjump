@@ -40,3 +40,5 @@ In its current form, `hyprjump` is usable as described above. However, some mino
 - [ ] Misc. options for generating bindings used by `init`
 - [ ] Allow chaining of initialization and daemonization
 - [ ] If the user uses single-letter tags for their own purposes, add an option for a prefix string for the tags set by `hyprjump`
+- [ ] Add Nix flake, allowing for installation with Nix
+- [ ] Add error messages for missing dependencies
