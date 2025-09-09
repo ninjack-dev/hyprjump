@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+
+set -u
+
+HYPRJUMP_DIR="${XDG_RUNTIME_DIR}/hyprjump/${HYPRLAND_INSTANCE_SIGNATURE}"
+HYPRJUMP_SOCKET="${HYPRJUMP_DIR}/.socket.sock"
+HYPRLAND_EVENT_SOCKET="${XDG_RUNTIME_DIR}/hypr/${HYPRLAND_INSTANCE_SIGNATURE}/.socket2.sock"
+
+declare -ag JUMP_LIST=()
+declare -g ACTIVE_ADDRESS=""
+
+print_help() {
+echo " Usage: hyprjump <command> <subcommand>"
+echo ""
+echo " Commands:"
+echo "   run           Runs the watcher process responsible for maintaining the jumplist"
+echo "   jump          Jumps to the next/previous window in the jumplist based on subcommand (default: next)"
+echo "   Subcommands:"
+echo "     up, next    Jumps to the next window in the jumplist (i.e. the window focused after this one)"
+echo "     down, prev  Jumps to the previous window in the jumplist (i.e. the window focused before this one)"
+echo "   init          Initializes the binds associated with tag mode"
+echo "   help          Shows this help text"
+}
+
+# TODO: Replace `hyprctl` with a string builder, call at end with `--batch`
+# Maybe also look into unbinding existing, identical binds?
+inititialize_mark_modes() {
+  hyprctl keyword bindd '$mainMod,m,Enter mark mode,submap,mark_mode' 2>/dev/null
+  hyprctl keyword submap mark_mode >/dev/null
+  for char in {a..z}; do
+    hyprctl keyword bindd ",$char,Tag currently-focused window with $char,tagwindow,-$char tag:$char" >/dev/null
+    hyprctl keyword bindd ",$char,Tag currently-focused window with $char,tagwindow,+$char" >/dev/null
+    hyprctl keyword bindd ",$char,Tag currently-focused window with $char,submap,reset" >/dev/null
+  done
+  hyprctl keyword bindd ',Escape,Exit mark mode early,submap,reset' 2>/dev/null
+  hyprctl keyword submap reset >/dev/null
+
+  hyprctl keyword bindd '$mainMod,apostrophe,Enter jump mode,submap,jump_mode' 2>/dev/null
+  hyprctl keyword submap jump_mode >/dev/null
+  for char in {a..z}; do
+    hyprctl keyword bindd ",$char, Jump to window marked with $char, focuswindow, tag:$char" >/dev/null
+    hyprctl keyword bindd ",$char, Jump to window marked with $char, submap, reset" >/dev/null
+  done
+  for int in {1..10}; do
+    declare -l desc_int
+    case $int in
+      1)
+        desc_int=""
+        ;;
+      2)
+        desc_int="2nd "
+        ;;
+      3)
+        desc_int="3rd "
+        ;;
+      *)
+        desc_int="${int}th "
+        ;;
+    esac
+    hyprctl keyword bindd ",$int,Jump to the ${desc_int}most recently focused window, exec,sh -c \"hyprctl dispatch focuswindow address:\$(hyprctl -j clients | jq -r '.[] | select(.focusHistoryID == 2) | .address')\"" >/dev/null
+    hyprctl keyword bindd ",$int,Jump to the ${desc_int}most recently focused window, submap, reset" >/dev/null
+  done
+  hyprctl keyword bind ',Escape,Exit jump mode early,submap,reset' 2>/dev/null
+  hyprctl keyword submap reset >/dev/null
+}
+
+ensure_dirs() {
+  mkdir -p "${HYPRJUMP_DIR}"
+}
+
+update_state() {
+  readarray -t JUMP_LIST < <(
+    hyprctl -j clients | jq -r 'sort_by(.focusHistoryID) | .[].address'
+  )
+  ACTIVE_ADDRESS="${JUMP_LIST[0]}"
+}
+
+handle_hyprland_event() {
+  local line="$1"
+  [[ $line == activewindowv2* ]] || return 0
+  local address="${line/activewindowv2>>/0x}"
+  if [[ $address != "$ACTIVE_ADDRESS" ]]; then
+    update_state
+  fi
+}
+
+focus_address() {
+  local addr="$1"
+  [[ -n $addr ]] || return 1
+  ACTIVE_ADDRESS="$addr"
+  hyprctl dispatch focuswindow "address:${ACTIVE_ADDRESS}" > /dev/null 2>&1
+}
+
+jump_up() {
+  local i
+  for ((i = 0; i < ${#JUMP_LIST[@]}; i++)); do
+    if [[ ${JUMP_LIST[i]} == "$ACTIVE_ADDRESS" ]]; then
+      ((i > 0)) && focus_address "${JUMP_LIST[$i - 1]}"
+      return 0
+    fi
+  done
+}
+
+jump_down() {
+  local i
+  for ((i = 0; i < ${#JUMP_LIST[@]}; i++)); do
+    if [[ ${JUMP_LIST[i]} == "$ACTIVE_ADDRESS" ]]; then
+      ((i + 1 < ${#JUMP_LIST[@]})) && focus_address "${JUMP_LIST[$i + 1]}"
+      return 0
+    fi
+  done
+}
+
+handle_command() {
+  case "$1" in
+    jump_up) jump_up ;;
+    jump_down) jump_down ;;
+    *) exit 1;;
+  esac
+}
+
+# Send commands to control socket
+cmd() {
+  printf "%s\n" "$1" | socat - UNIX-CONNECT:"$HYPRJUMP_SOCKET" || echo "Could not write to control socket!"
+}
+
+# --- Daemon Logic ---
+start_event_feed() {
+  EVENT_FD=69
+  exec {EVENT_FD}< <(socat -u UNIX-CONNECT:"$HYPRLAND_EVENT_SOCKET" -)
+
+  # Using this method results in Bash errors related to multiple coprocs; these are
+  # technically no longer valid and coproc would work, but the above works just as well IMO
+  #
+  # coproc HYPR_EVENTS { exec socat -u UNIX-CONNECT:"$HYPRLAND_EVENT_SOCKET" -; }
+  # EVENT_FD="${HYPR_EVENTS[0]}"
+}
+
+start_control_listener() {
+  CTRL_FD=70
+  exec {CTRL_FD}< <(socat -u UNIX-LISTEN:"$HYPRJUMP_SOCKET",unlink-early -)
+}
+
+begin_daemon() {
+  ensure_dirs
+
+  if ! ls "$HYPRJUMP_SOCKET" >/dev/null 2>&1 ; then
+    echo "Hyprjump \"daemon\" is already running!"
+    exit 1
+  fi
+
+  update_state
+  start_event_feed
+  start_control_listener
+
+  # Clean up sockets and coprocesses on exit.
+  trap '
+    [[ -n "${HYPR_EVENTS_PID-}" ]] && kill "$HYPR_EVENTS_PID" 2>/dev/null
+    [[ -n "${HYPR_CTRL_PID-}"   ]] && kill "$HYPR_CTRL_PID"   2>/dev/null
+    rm -f "$HYPRJUMP_SOCKET"
+  ' EXIT
+
+  local line=""
+  local control=""
+
+  while :; do
+    # For some reason, `read -ru "$EVENT_FD" line` simply would not return 1, even if there was nothing to read. 
+    # This was the only way I could get it to work.
+    while read -t 0 -ru "$EVENT_FD" line; do
+      read -ru "$EVENT_FD" line
+      handle_hyprland_event "$line"
+    done
+
+    while read -t 0 -ru "$CTRL_FD" control; do
+      read -ru "$CTRL_FD" control
+      handle_command "$control"
+      start_control_listener
+    done
+  done
+}
+
+main() {
+  if [[ $# -eq 0 ]]; then
+    print_help
+    exit 1
+  fi
+
+  case "$1" in
+    run)
+      begin_daemon
+      exit
+      ;;
+    jump)
+      shift
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          up | next) cmd "jump_up" ;;
+          down | prev) cmd "jump_down" ;;
+          *)
+            printf 'Unknown jump direction: %s\n' "$1" >&2
+            exit 1
+            ;;
+        esac
+        shift
+      done
+      ;;
+    init)
+      shift
+      inititialize_mark_modes
+      ;;
+    help)
+      print_help
+      ;;
+    *)
+      printf 'Unknown command: %s\n' "$1" >&2
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"
