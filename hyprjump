@@ -127,7 +127,8 @@ cmd() {
 # --- Daemon Logic ---
 start_event_feed() {
   EVENT_FD=69
-  exec {EVENT_FD}< <(socat -u UNIX-CONNECT:"$HYPRLAND_EVENT_SOCKET" -)
+  exec {EVENT_FD}< <(socat -u UNIX-CONNECT:"$HYPRLAND_EVENT_SOCKET" - 2>/dev/null)
+  EVENT_PID=$!
 
   # Using this method results in Bash errors related to multiple coprocs; these are
   # technically no longer valid and coproc would work, but the above works just as well IMO
@@ -138,7 +139,8 @@ start_event_feed() {
 
 start_control_listener() {
   CTRL_FD=70
-  exec {CTRL_FD}< <(socat -u UNIX-LISTEN:"$HYPRJUMP_SOCKET",unlink-early -)
+  exec {CTRL_FD}< <(socat -u UNIX-LISTEN:"$HYPRJUMP_SOCKET",unlink-early - 2>/dev/null)
+  CTRL_PID=$!
 }
 
 begin_daemon() {
@@ -155,9 +157,8 @@ begin_daemon() {
 
   # Clean up sockets and coprocesses on exit.
   trap '
-    [[ -n "${HYPR_EVENTS_PID-}" ]] && kill "$HYPR_EVENTS_PID" 2>/dev/null
-    [[ -n "${HYPR_CTRL_PID-}"   ]] && kill "$HYPR_CTRL_PID"   2>/dev/null
-    rm -f "$HYPRJUMP_SOCKET"
+    [[ -n "${EVENT_PID-}" ]] && kill "$EVENT_PID" 2>/dev/null
+    [[ -n "${CTRL_PID-}" ]] && kill "$CTRL_PID"   2>/dev/null
   ' EXIT
 
   local line=""
