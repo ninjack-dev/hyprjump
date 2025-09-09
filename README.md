@@ -16,8 +16,8 @@ exec-once = hyprjump run
 ```
 This allows it to track the state of the window focus history, which is vital for mimicking Vim's jumplist. From there, add calls to hyprjump which allow for window history navigation:
 ```
-bindd = SUPER, O, exec, Jump backward through window history, exec, hyprjump jump prev
-bindd = SUPER, I, exec, Jump forward through window history, exec, hyprjump jump next
+bindd = SUPER, O, Jump backward through window history, exec, hyprjump jump prev
+bindd = SUPER, I, Jump forward through window history, exec, hyprjump jump next
 ```
 ###
 If only the tagging behavior is desired, you can run the following to add a comprehensive set of keybinds for mark/jump mode:
