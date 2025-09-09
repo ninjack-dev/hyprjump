@@ -10,36 +10,36 @@ declare -ag JUMP_LIST=()
 declare -g ACTIVE_ADDRESS=""
 
 print_help() {
-echo " Usage: hyprjump <command> <subcommand>"
-echo ""
-echo " Commands:"
-echo "   run           Runs the watcher process responsible for maintaining the jumplist"
-echo "   jump          Jumps to the next/previous window in the jumplist based on subcommand (default: next)"
-echo "   Subcommands:"
-echo "     up, next    Jumps to the next window in the jumplist (i.e. the window focused after this one)"
-echo "     down, prev  Jumps to the previous window in the jumplist (i.e. the window focused before this one)"
-echo "   init          Initializes the binds associated with tag mode"
-echo "   help          Shows this help text"
+  echo " Usage: hyprjump <command> <subcommand>"
+  echo ""
+  echo " Commands:"
+  echo "   run           Runs the watcher process responsible for maintaining the jumplist"
+  echo "   jump          Jumps to the next/previous window in the jumplist based on subcommand (default: next)"
+  echo "   Subcommands:"
+  echo "     up, next    Jumps to the next window in the jumplist (i.e. the window focused after this one)"
+  echo "     down, prev  Jumps to the previous window in the jumplist (i.e. the window focused before this one)"
+  echo "   init          Initializes the binds associated with tag mode"
+  echo "   help          Shows this help text"
 }
 
 # TODO: Replace `hyprctl` with a string builder, call at end with `--batch`
 # Maybe also look into unbinding existing, identical binds?
 inititialize_mark_modes() {
-  hyprctl keyword bindd '$mainMod,m,Enter mark mode,submap,mark_mode' 2>/dev/null
-  hyprctl keyword submap mark_mode >/dev/null
+  hyprctl keyword bindd '$mainMod,m,Enter mark mode,submap,mark_mode' 2> /dev/null
+  hyprctl keyword submap mark_mode > /dev/null
   for char in {a..z}; do
-    hyprctl keyword bindd ",$char,Tag currently-focused window with $char,tagwindow,-$char tag:$char" >/dev/null
-    hyprctl keyword bindd ",$char,Tag currently-focused window with $char,tagwindow,+$char" >/dev/null
-    hyprctl keyword bindd ",$char,Tag currently-focused window with $char,submap,reset" >/dev/null
+    hyprctl keyword bindd ",$char,Tag currently-focused window with $char,tagwindow,-$char tag:$char" > /dev/null
+    hyprctl keyword bindd ",$char,Tag currently-focused window with $char,tagwindow,+$char" > /dev/null
+    hyprctl keyword bindd ",$char,Tag currently-focused window with $char,submap,reset" > /dev/null
   done
-  hyprctl keyword bindd ',Escape,Exit mark mode early,submap,reset' 2>/dev/null
-  hyprctl keyword submap reset >/dev/null
+  hyprctl keyword bindd ',Escape,Exit mark mode early,submap,reset' 2> /dev/null
+  hyprctl keyword submap reset > /dev/null
 
-  hyprctl keyword bindd '$mainMod,apostrophe,Enter jump mode,submap,jump_mode' 2>/dev/null
-  hyprctl keyword submap jump_mode >/dev/null
+  hyprctl keyword bindd '$mainMod,apostrophe,Enter jump mode,submap,jump_mode' 2> /dev/null
+  hyprctl keyword submap jump_mode > /dev/null
   for char in {a..z}; do
-    hyprctl keyword bindd ",$char, Jump to window marked with $char, focuswindow, tag:$char" >/dev/null
-    hyprctl keyword bindd ",$char, Jump to window marked with $char, submap, reset" >/dev/null
+    hyprctl keyword bindd ",$char, Jump to window marked with $char, focuswindow, tag:$char" > /dev/null
+    hyprctl keyword bindd ",$char, Jump to window marked with $char, submap, reset" > /dev/null
   done
   for int in {1..10}; do
     declare -l desc_int
@@ -57,11 +57,11 @@ inititialize_mark_modes() {
         desc_int="${int}th "
         ;;
     esac
-    hyprctl keyword bindd ",$int,Jump to the ${desc_int}most recently focused window, exec,sh -c \"hyprctl dispatch focuswindow address:\$(hyprctl -j clients | jq -r '.[] | select(.focusHistoryID == 2) | .address')\"" >/dev/null
-    hyprctl keyword bindd ",$int,Jump to the ${desc_int}most recently focused window, submap, reset" >/dev/null
+    hyprctl keyword bindd ",$int,Jump to the ${desc_int}most recently focused window, exec,sh -c \"hyprctl dispatch focuswindow address:\$(hyprctl -j clients | jq -r '.[] | select(.focusHistoryID == 2) | .address')\"" > /dev/null
+    hyprctl keyword bindd ",$int,Jump to the ${desc_int}most recently focused window, submap, reset" > /dev/null
   done
-  hyprctl keyword bind ',Escape,Exit jump mode early,submap,reset' 2>/dev/null
-  hyprctl keyword submap reset >/dev/null
+  hyprctl keyword bind ',Escape,Exit jump mode early,submap,reset' 2> /dev/null
+  hyprctl keyword submap reset > /dev/null
 }
 
 ensure_dirs() {
@@ -115,7 +115,7 @@ handle_command() {
   case "$1" in
     jump_up) jump_up ;;
     jump_down) jump_down ;;
-    *) exit 1;;
+    *) exit 1 ;;
   esac
 }
 
@@ -127,7 +127,7 @@ cmd() {
 # --- Daemon Logic ---
 start_event_feed() {
   EVENT_FD=69
-  exec {EVENT_FD}< <(socat -u UNIX-CONNECT:"$HYPRLAND_EVENT_SOCKET" - 2>/dev/null)
+  exec {EVENT_FD}< <(socat -u UNIX-CONNECT:"$HYPRLAND_EVENT_SOCKET" - 2> /dev/null)
   EVENT_PID=$!
 
   # Using this method results in Bash errors related to multiple coprocs; these are
@@ -139,14 +139,14 @@ start_event_feed() {
 
 start_control_listener() {
   CTRL_FD=70
-  exec {CTRL_FD}< <(socat -u UNIX-LISTEN:"$HYPRJUMP_SOCKET",unlink-early - 2>/dev/null)
+  exec {CTRL_FD}< <(socat -u UNIX-LISTEN:"$HYPRJUMP_SOCKET",unlink-early - 2> /dev/null)
   CTRL_PID=$!
 }
 
 begin_daemon() {
   ensure_dirs
 
-  if ls "$HYPRJUMP_SOCKET" >/dev/null 2>&1 ; then
+  if ls "$HYPRJUMP_SOCKET" > /dev/null 2>&1; then
     echo "Hyprjump \"daemon\" is already running!"
     exit 1
   fi
@@ -165,7 +165,7 @@ begin_daemon() {
   local control=""
 
   while :; do
-    # For some reason, `read -ru "$EVENT_FD" line` simply would not return 1, even if there was nothing to read. 
+    # For some reason, `read -ru "$EVENT_FD" line` simply would not return 1, even if there was nothing to read.
     # This was the only way I could get it to work.
     while read -t 0 -ru "$EVENT_FD" line; do
       read -ru "$EVENT_FD" line
