@@ -144,7 +144,7 @@ start_control_listener() {
 begin_daemon() {
   ensure_dirs
 
-  if ! ls "$HYPRJUMP_SOCKET" >/dev/null 2>&1 ; then
+  if ls "$HYPRJUMP_SOCKET" >/dev/null 2>&1 ; then
     echo "Hyprjump \"daemon\" is already running!"
     exit 1
   fi
