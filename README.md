@@ -35,7 +35,6 @@ While in either mode, you can press `Esc` to exit early if so desired.
 ## To-Do List
 In its current form, `hyprjump` is usable as described above. However, some minor features are WIP:
 - [ ] Add `init dump` utility which dumps a complete configuration file for use with Hyprland directly
-- [ ] Add misc. options for 
 - [ ] Add option to pick which Hyprland instance to use
 - [ ] Misc. options for generating bindings used by `init`
 - [ ] Allow chaining of initialization and daemonization
