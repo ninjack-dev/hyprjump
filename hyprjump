@@ -60,7 +60,7 @@ inititialize_mark_modes() {
     hyprctl keyword bindd ",$int,Jump to the ${desc_int}most recently focused window, exec,sh -c \"hyprctl dispatch focuswindow address:\$(hyprctl -j clients | jq -r '.[] | select(.focusHistoryID == 2) | .address')\"" > /dev/null
     hyprctl keyword bindd ",$int,Jump to the ${desc_int}most recently focused window, submap, reset" > /dev/null
   done
-  hyprctl keyword bind ',Escape,Exit jump mode early,submap,reset' 2> /dev/null
+  hyprctl keyword bindd ',Escape,Exit jump mode early,submap,reset' 2> /dev/null
   hyprctl keyword submap reset > /dev/null
 }
 
