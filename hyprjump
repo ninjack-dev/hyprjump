@@ -115,7 +115,6 @@ handle_command() {
   case "$1" in
     jump_up) jump_up ;;
     jump_down) jump_down ;;
-    *) exit 1 ;;
   esac
 }
 
