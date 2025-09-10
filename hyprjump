@@ -57,8 +57,8 @@ inititialize_mark_modes() {
         desc_int="${int}th "
         ;;
     esac
-    hyprctl keyword bindd ",$int,Jump to the ${desc_int}most recently focused window, exec,sh -c \"hyprctl dispatch focuswindow address:\$(hyprctl -j clients | jq -r '.[] | select(.focusHistoryID == 2) | .address')\"" > /dev/null
-    hyprctl keyword bindd ",$int,Jump to the ${desc_int}most recently focused window, submap, reset" > /dev/null
+    hyprctl keyword bindd ",${int: -1},Jump to the ${desc_int}most recently focused window, exec, sh -c \"hyprctl dispatch focuswindow address:\$(hyprctl -j clients | jq -r '.[] | select(.focusHistoryID == $int) | .address')\"" > /dev/null
+    hyprctl keyword bindd ",${int: -1},Jump to the ${desc_int}most recently focused window, submap, reset" > /dev/null
   done
   hyprctl keyword bindd ',Escape,Exit jump mode early,submap,reset' > /dev/null
   hyprctl keyword submap reset > /dev/null
