@@ -77,10 +77,10 @@ update_state() {
 
 handle_hyprland_event() {
   local line="$1"
-  [[ $line == activewindowv2* ]] || return 0
+  [[ $line == activewindowv2* || -z $ACTIVE_ADDRESS ]] || return 0
   local address="${line/activewindowv2>>/0x}"
   if [[ $address != "$ACTIVE_ADDRESS" ]]; then
-    update_state
+    ACTIVE_ADDRESS=""
   fi
 }
 
@@ -92,6 +92,7 @@ focus_address() {
 }
 
 jump_up() {
+  [[ -z "$ACTIVE_ADDRESS" ]] && update_state
   local i
   for ((i = 0; i < ${#JUMP_LIST[@]}; i++)); do
     if [[ ${JUMP_LIST[i]} == "$ACTIVE_ADDRESS" ]]; then
@@ -102,6 +103,7 @@ jump_up() {
 }
 
 jump_down() {
+  [[ -z "$ACTIVE_ADDRESS" ]] && update_state
   local i
   for ((i = 0; i < ${#JUMP_LIST[@]}; i++)); do
     if [[ ${JUMP_LIST[i]} == "$ACTIVE_ADDRESS" ]]; then
