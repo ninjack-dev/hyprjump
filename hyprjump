@@ -125,22 +125,30 @@ cmd() {
 }
 
 # --- Daemon Logic ---
-start_event_feed() {
-  EVENT_FD=69
-  exec {EVENT_FD}< <(socat -u UNIX-CONNECT:"$HYPRLAND_EVENT_SOCKET" - 2> /dev/null)
-  EVENT_PID=$!
+# It's seemingly impossible to read from multiple file descriptors in parallel (if there is a way, please make an issue/PR!!)
+# As such, we take our event streams and merge them into a single FD (EVENT_BUS), prepending the event type to each line.
+# Event types are as follows:
+# - EVENT: An event from the Hyprland socket
+# - COMMAND: A command for Hyprjump
 
-  # Using this method results in Bash errors related to multiple coprocs; these are
-  # technically no longer valid and coproc would work, but the above works just as well IMO
-  #
-  # coproc HYPR_EVENTS { exec socat -u UNIX-CONNECT:"$HYPRLAND_EVENT_SOCKET" -; }
-  # EVENT_FD="${HYPR_EVENTS[0]}"
+# For these two feeds, for some reason, piping to `sed` to prepend the type had no output. This was the only way I could make it work.
+start_event_feed() {
+  socat -u UNIX-CONNECT:"$HYPRLAND_EVENT_SOCKET" - \
+    | while read -r event; do printf "%s\n" "EVENT $event"; done
 }
 
-start_control_listener() {
-  CTRL_FD=70
-  exec {CTRL_FD}< <(socat -u UNIX-LISTEN:"$HYPRJUMP_SOCKET",unlink-early - 2> /dev/null)
-  CTRL_PID=$!
+start_command_feed() {
+  socat -u UNIX-LISTEN:"$HYPRJUMP_SOCKET",unlink-early,fork - \
+    | while read -r command; do printf "%s\n" "COMMAND $command"; done
+}
+
+start_event_bus() {
+  exec {EVENT_BUS}< <(
+    start_command_feed &
+    start_event_feed &
+    wait
+  )
+  BUS_PID=$!
 }
 
 begin_daemon() {
@@ -152,31 +160,19 @@ begin_daemon() {
   fi
 
   update_state
-  start_event_feed
-  start_control_listener
+  start_event_bus
 
-  # Clean up sockets and coprocesses on exit.
   trap '
-    [[ -n "${EVENT_PID-}" ]] && kill "$EVENT_PID" 2>/dev/null
-    [[ -n "${CTRL_PID-}" ]] && kill "$CTRL_PID"   2>/dev/null
+    [[ -n "${BUS_PID-}" ]] && kill "$BUS_PID"   2>/dev/null
+    rm -f $HYPRJUMP_SOCKET
   ' EXIT
 
-  local line=""
-  local control=""
-
-  while :; do
-    # For some reason, `read -ru "$EVENT_FD" line` simply would not return 1, even if there was nothing to read.
-    # This was the only way I could get it to work.
-    while read -t 0 -ru "$EVENT_FD" line; do
-      read -ru "$EVENT_FD" line
-      handle_hyprland_event "$line"
-    done
-
-    while read -t 0 -ru "$CTRL_FD" control; do
-      read -ru "$CTRL_FD" control
-      handle_command "$control"
-      start_control_listener
-    done
+  while read -r -u "$EVENT_BUS" event; do
+    case "$event" in
+      EVENT\ *) handle_hyprland_event "${event#EVENT }" ;;
+      COMMAND\ *) handle_command "${event#COMMAND }" ;;
+      *) printf "Unknown event type: %s" "${event%% *}" ;;
+    esac
   done
 }
 
