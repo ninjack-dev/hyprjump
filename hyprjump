@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-set -u
-
 HYPRJUMP_DIR="${XDG_RUNTIME_DIR}/hyprjump/${HYPRLAND_INSTANCE_SIGNATURE}"
 HYPRJUMP_SOCKET="${HYPRJUMP_DIR}/.socket.sock"
 HYPRLAND_EVENT_SOCKET="${XDG_RUNTIME_DIR}/hypr/${HYPRLAND_INSTANCE_SIGNATURE}/.socket2.sock"
@@ -135,7 +133,6 @@ handle_command() {
   esac
 }
 
-# Send commands to control socket
 cmd() {
   printf "%s\n" "$1" | socat - UNIX-CONNECT:"$HYPRJUMP_SOCKET" || echo "Could not write to control socket!"
 }
@@ -147,7 +144,6 @@ cmd() {
 # - EVENT: An event from the Hyprland socket
 # - COMMAND: A command for Hyprjump
 
-# Filter for window addresses early
 start_window_event_feed() {
   socat -u UNIX-CONNECT:"$HYPRLAND_EVENT_SOCKET" - | sed -u 's/^/EVENT /'
 }
