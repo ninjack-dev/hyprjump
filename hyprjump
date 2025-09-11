@@ -5,6 +5,13 @@ HYPRJUMP_SOCKET="${HYPRJUMP_DIR}/.socket.sock"
 HYPRLAND_EVENT_SOCKET="${XDG_RUNTIME_DIR}/hypr/${HYPRLAND_INSTANCE_SIGNATURE}/.socket2.sock"
 
 declare -ag JUMP_LIST=()
+
+# The current state is communicated by the CURRENT_INDEX:
+#  0+: In a valid state, index represents currently focused window in jump list
+# -1 : State is generically invalid, i.e. the user jumped to a window
+# -2 : State is invalid because the user jumped to a blank workspace; 
+#      they'll expect the next jump_back invocation to take them to the most recently focused window,
+#      not the one after.
 declare -g CURRENT_INDEX
 
 # Hyprland is... interesting. I spent many hours debugging this:
@@ -96,6 +103,10 @@ update_state() {
 handle_hyprland_event() {
   local line="$1"
   [[ $line == activewindowv2* && -n ${JUMP_LIST[$CURRENT_INDEX]} ]] || return 0
+  [[ $line == "activewindowv2>>" ]] && {
+    CURRENT_INDEX=-2
+    return 0
+  } # If we jumped to a blank workspace, invalidate state
   local address="${line/activewindowv2>>/0x}"
   if [[ $IN_TRANSITION -eq 1 ]]; then
     if [[ $address == "${JUMP_LIST[$CURRENT_INDEX]}" ]]; then
@@ -115,13 +126,16 @@ focus_address() {
 }
 
 jump_up() {
-  [[ $CURRENT_INDEX -eq -1 ]] && update_state
+  ((CURRENT_INDEX == -2)) && return
+  ((CURRENT_INDEX == -1)) && update_state
   ((CURRENT_INDEX > 0)) && ((CURRENT_INDEX--))
   focus_address "${JUMP_LIST[$CURRENT_INDEX]}"
 }
 
+# The control flow here has some code smell. Could maybe do with a rework.
 jump_down() {
-  [[ $CURRENT_INDEX -eq -1 ]] && update_state
+  ((CURRENT_INDEX == -1)) && update_state
+  ((CURRENT_INDEX == -2)) && { update_state; CURRENT_INDEX=-1; }
   ((CURRENT_INDEX + 1 < ${#JUMP_LIST[@]})) && ((CURRENT_INDEX++))
   focus_address "${JUMP_LIST[$CURRENT_INDEX]}"
 }
