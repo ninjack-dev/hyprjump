@@ -132,21 +132,19 @@ cmd() {
 # - EVENT: An event from the Hyprland socket
 # - COMMAND: A command for Hyprjump
 
-# For these two feeds, for some reason, piping to `sed` to prepend the type had no output. This was the only way I could make it work.
-start_event_feed() {
+start_window_event_feed() {
   socat -u UNIX-CONNECT:"$HYPRLAND_EVENT_SOCKET" - \
-    | while read -r event; do printf "%s\n" "EVENT $event"; done
+    | sed -u -n 's/^\(activewindowv2>>.\{1\}\)/EVENT \1/p'
 }
 
 start_command_feed() {
-  socat -u UNIX-LISTEN:"$HYPRJUMP_SOCKET",unlink-early,fork - \
-    | while read -r command; do printf "%s\n" "COMMAND $command"; done
+  socat -u UNIX-LISTEN:"$HYPRJUMP_SOCKET",unlink-early,fork - | sed -u 's/^/COMMAND /'
 }
 
 start_event_bus() {
   exec {EVENT_BUS}< <(
     start_command_feed &
-    start_event_feed &
+    start_window_event_feed &
     wait
   )
   BUS_PID=$!
@@ -159,7 +157,7 @@ begin_daemon() {
     hyprjump_pids=$(pgrep --full ".*hyprjump.*run.*")
     hyprjump_pid_count=$(wc -l <<< "$hyprjump_pids")
 
-    EXPECTED_PID_COUNT=7 # Expected count for a daemon process is 6, +1 for this current one
+    EXPECTED_PID_COUNT=5 # Expected count for a daemon process is 4, +1 for this current one
     if [[ $hyprjump_pid_count -ge $EXPECTED_PID_COUNT ]]; then
       echo "Hyprjump \"daemon\" is already running"
       exit 1
