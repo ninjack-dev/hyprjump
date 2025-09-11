@@ -9,6 +9,26 @@ HYPRLAND_EVENT_SOCKET="${XDG_RUNTIME_DIR}/hypr/${HYPRLAND_INSTANCE_SIGNATURE}/.s
 declare -ag JUMP_LIST=()
 declare -g ACTIVE_ADDRESS=""
 
+# Hyprland is... interesting. I spent many hours debugging this:
+# Basically, if I have these three adjacent windows:
+# -----------
+# [A] [B] [C] <-- focused
+# -----------
+# And I focuswindow A, my event log will look like this:
+# activewindowv2>>B
+# activewindowv2>>A
+#
+# but if I have:
+# -----------
+# [B] [A] [C] <--focused
+# -----------
+# and I run the same, I get:
+# activewindowv2>>A
+#
+# In summary, the focuswindow dispatcher triggers a focus event for all windows in between the current and target, maybe due to the mouse
+# As such, we need this variable to effectively ignore events until we hit the one we're expecting. I don't think it should cause any issues.
+declare -g IN_TRANSITION=0
+
 print_help() {
   echo " Usage: hyprjump <command> <subcommand>"
   echo ""
@@ -79,6 +99,12 @@ handle_hyprland_event() {
   local line="$1"
   [[ $line == activewindowv2* || -z $ACTIVE_ADDRESS ]] || return 0
   local address="${line/activewindowv2>>/0x}"
+  if [[ $IN_TRANSITION -eq 1 ]]; then
+    if [[ $address == "$ACTIVE_ADDRESS" ]]; then
+      IN_TRANSITION=0
+    fi
+    return
+  fi
   if [[ $address != "$ACTIVE_ADDRESS" ]]; then
     ACTIVE_ADDRESS=""
   fi
@@ -88,6 +114,7 @@ focus_address() {
   local addr="$1"
   [[ -n $addr ]] || return 1
   ACTIVE_ADDRESS="$addr"
+  IN_TRANSITION=1
   hyprctl dispatch focuswindow "address:${ACTIVE_ADDRESS}" > /dev/null 2>&1
 }
 
