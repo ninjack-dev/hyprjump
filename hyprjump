@@ -7,7 +7,7 @@ HYPRJUMP_SOCKET="${HYPRJUMP_DIR}/.socket.sock"
 HYPRLAND_EVENT_SOCKET="${XDG_RUNTIME_DIR}/hypr/${HYPRLAND_INSTANCE_SIGNATURE}/.socket2.sock"
 
 declare -ag JUMP_LIST=()
-declare -g ACTIVE_ADDRESS=""
+declare -g CURRENT_INDEX
 
 # Hyprland is... interesting. I spent many hours debugging this:
 # Basically, if I have these three adjacent windows:
@@ -92,52 +92,40 @@ update_state() {
   readarray -t JUMP_LIST < <(
     hyprctl -j clients | jq -r 'sort_by(.focusHistoryID) | .[].address'
   )
-  ACTIVE_ADDRESS="${JUMP_LIST[0]}"
+  CURRENT_INDEX=0
 }
 
 handle_hyprland_event() {
   local line="$1"
-  [[ $line == activewindowv2* || -z $ACTIVE_ADDRESS ]] || return 0
+  [[ $line == activewindowv2* && -n ${JUMP_LIST[$CURRENT_INDEX]} ]] || return 0
   local address="${line/activewindowv2>>/0x}"
   if [[ $IN_TRANSITION -eq 1 ]]; then
-    if [[ $address == "$ACTIVE_ADDRESS" ]]; then
+    if [[ $address == "${JUMP_LIST[$CURRENT_INDEX]}" ]]; then
       IN_TRANSITION=0
     fi
     return
   fi
-  if [[ $address != "$ACTIVE_ADDRESS" ]]; then
-    ACTIVE_ADDRESS=""
+  if [[ $address != "${JUMP_LIST[$CURRENT_INDEX]}" ]]; then
+    CURRENT_INDEX=-1
   fi
 }
 
 focus_address() {
-  local addr="$1"
-  [[ -n $addr ]] || return 1
-  ACTIVE_ADDRESS="$addr"
+  [[ -n $1 ]] || return 1
   IN_TRANSITION=1
-  hyprctl dispatch focuswindow "address:${ACTIVE_ADDRESS}" > /dev/null 2>&1
+  hyprctl dispatch focuswindow "address:$1" > /dev/null 2>&1
 }
 
 jump_up() {
-  [[ -z "$ACTIVE_ADDRESS" ]] && update_state
-  local i
-  for ((i = 0; i < ${#JUMP_LIST[@]}; i++)); do
-    if [[ ${JUMP_LIST[i]} == "$ACTIVE_ADDRESS" ]]; then
-      ((i > 0)) && focus_address "${JUMP_LIST[$i - 1]}"
-      return 0
-    fi
-  done
+  [[ $CURRENT_INDEX -eq -1 ]] && update_state
+  ((CURRENT_INDEX > 0)) && ((CURRENT_INDEX--))
+  focus_address "${JUMP_LIST[$CURRENT_INDEX]}"
 }
 
 jump_down() {
-  [[ -z "$ACTIVE_ADDRESS" ]] && update_state
-  local i
-  for ((i = 0; i < ${#JUMP_LIST[@]}; i++)); do
-    if [[ ${JUMP_LIST[i]} == "$ACTIVE_ADDRESS" ]]; then
-      ((i + 1 < ${#JUMP_LIST[@]})) && focus_address "${JUMP_LIST[$i + 1]}"
-      return 0
-    fi
-  done
+  [[ $CURRENT_INDEX -eq -1 ]] && update_state
+  ((CURRENT_INDEX + 1 < ${#JUMP_LIST[@]})) && ((CURRENT_INDEX++))
+  focus_address "${JUMP_LIST[$CURRENT_INDEX]}"
 }
 
 handle_command() {
@@ -159,9 +147,9 @@ cmd() {
 # - EVENT: An event from the Hyprland socket
 # - COMMAND: A command for Hyprjump
 
+# Filter for window addresses early
 start_window_event_feed() {
-  socat -u UNIX-CONNECT:"$HYPRLAND_EVENT_SOCKET" - \
-    | sed -u -n 's/^\(activewindowv2>>.\{1\}\)/EVENT \1/p'
+  socat -u UNIX-CONNECT:"$HYPRLAND_EVENT_SOCKET" - | sed -u 's/^/EVENT /'
 }
 
 start_command_feed() {
