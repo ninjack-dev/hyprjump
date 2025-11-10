@@ -41,8 +41,8 @@ print_help() {
   echo "   run           Runs the watcher process responsible for maintaining the jumplist"
   echo "   jump          Jumps to the next/previous window in the jumplist based on subcommand (default: next)"
   echo "   Subcommands:"
-  echo "     up, next    Jumps to the next window in the jumplist (i.e. the window focused after this one)"
-  echo "     down, prev  Jumps to the previous window in the jumplist (i.e. the window focused before this one)"
+  echo "     down, next  Jumps to the next window in the jumplist (i.e. the window focused after this one)"
+  echo "     up, prev    Jumps to the previous window in the jumplist (i.e. the window focused before this one)"
   echo "   init          Initializes the binds associated with tag mode"
   echo "   help          Shows this help text"
 }
@@ -125,7 +125,7 @@ focus_address() {
   hyprctl dispatch focuswindow "address:$1" > /dev/null 2>&1
 }
 
-jump_up() {
+jump_down() {
   ((CURRENT_INDEX == -2)) && return
   ((CURRENT_INDEX == -1)) && update_state
   ((CURRENT_INDEX > 0)) && ((CURRENT_INDEX--))
@@ -133,7 +133,7 @@ jump_up() {
 }
 
 # The control flow here has some code smell. Could maybe do with a rework.
-jump_down() {
+jump_up() {
   ((CURRENT_INDEX == -1)) && update_state
   ((CURRENT_INDEX == -2)) && { update_state; CURRENT_INDEX=-1; }
   ((CURRENT_INDEX + 1 < ${#JUMP_LIST[@]})) && ((CURRENT_INDEX++))
@@ -214,8 +214,8 @@ main() {
       shift
       while [[ $# -gt 0 ]]; do
         case "$1" in
-          up | next) cmd "jump_up" ;;
-          down | prev) cmd "jump_down" ;;
+        down | next) cmd "jump_down" ;;
+          up | prev) cmd "jump_up" ;;
           *)
             printf 'Unknown jump direction: %s\n' "$1" >&2
             exit 1
