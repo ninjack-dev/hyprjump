@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 HYPRJUMP_DIR="${XDG_RUNTIME_DIR}/hyprjump/${HYPRLAND_INSTANCE_SIGNATURE}"
-HYPRJUMP_SOCKET="${HYPRJUMP_DIR}/.socket.sock"
+HYPRJUMP_FIFO="${HYPRJUMP_DIR}/.socket.sock"
 HYPRLAND_EVENT_SOCKET="${XDG_RUNTIME_DIR}/hypr/${HYPRLAND_INSTANCE_SIGNATURE}/.socket2.sock"
 
 declare -ag JUMP_LIST=()
@@ -9,7 +9,7 @@ declare -ag JUMP_LIST=()
 # The current state is communicated by the CURRENT_INDEX:
 #  0+: In a valid state, index represents currently focused window in jump list
 # -1 : State is generically invalid, i.e. the user jumped to a window
-# -2 : State is invalid because the user jumped to a blank workspace; 
+# -2 : State is invalid because the user jumped to a blank workspace;
 #      they'll expect the next jump_back invocation to take them to the most recently focused window,
 #      not the one after.
 declare -g CURRENT_INDEX
@@ -135,7 +135,10 @@ jump_down() {
 # The control flow here has some code smell. Could maybe do with a rework.
 jump_up() {
   ((CURRENT_INDEX == -1)) && update_state
-  ((CURRENT_INDEX == -2)) && { update_state; CURRENT_INDEX=-1; }
+  ((CURRENT_INDEX == -2)) && {
+    update_state
+    CURRENT_INDEX=-1
+  }
   ((CURRENT_INDEX + 1 < ${#JUMP_LIST[@]})) && ((CURRENT_INDEX++))
   focus_address "${JUMP_LIST[$CURRENT_INDEX]}"
 }
@@ -148,7 +151,7 @@ handle_command() {
 }
 
 cmd() {
-  printf "%s\n" "$1" | socat - UNIX-CONNECT:"$HYPRJUMP_SOCKET" || echo "Could not write to control socket!"
+  printf "COMMAND %s\n" "$1" > "$HYPRJUMP_FIFO"
 }
 
 # --- Daemon Logic ---
@@ -162,15 +165,14 @@ start_window_event_feed() {
   socat -u UNIX-CONNECT:"$HYPRLAND_EVENT_SOCKET" - | sed -u 's/^/EVENT /'
 }
 
-start_command_feed() {
-  socat -u UNIX-LISTEN:"$HYPRJUMP_SOCKET",unlink-early,fork - | sed -u 's/^/COMMAND /'
-}
-
 start_event_bus() {
   exec {EVENT_BUS}< <(
-    start_command_feed &
     start_window_event_feed &
-    wait
+    window_event_feed_pid=$!
+    while cat "$HYPRJUMP_FIFO"; do :; done &
+    command_feed_pid=$!
+    trap 'kill -TERM $window_event_feed_pid $command_feed_pid; echo > $HYPRJUMP_FIFO' EXIT
+    wait $window_event_feed_pid $command_feed_pid
   )
   BUS_PID=$!
 }
@@ -178,23 +180,27 @@ start_event_bus() {
 begin_daemon() {
   ensure_dirs
 
-  if ls "$HYPRJUMP_SOCKET" > /dev/null 2>&1; then
-    rm -f "$HYPRJUMP_SOCKET"
+  if ls "$HYPRJUMP_FIFO" > /dev/null 2>&1; then
+    rm -f "$HYPRJUMP_FIFO"
   fi
+  
+  mkfifo "$HYPRJUMP_FIFO"
 
-  update_state
   start_event_bus
+  update_state
 
   trap '
-    [[ -n "${BUS_PID-}" ]] && kill "$BUS_PID"   2>/dev/null
-    rm -f $HYPRJUMP_SOCKET
+  trap - EXIT
+  kill -TERM "$BUS_PID" 2>/dev/null
+  rm -r "$HYPRJUMP_DIR"
+  exit 0
   ' EXIT
 
   while read -r -u "$EVENT_BUS" event; do
     case "$event" in
       EVENT\ *) handle_hyprland_event "${event#EVENT }" ;;
       COMMAND\ *) handle_command "${event#COMMAND }" ;;
-      *) printf "Unknown event type: %s" "${event%% *}" ;;
+      *) printf "Unknown event type: %s" "${event%% *}" >&2;;
     esac
   done
 }
@@ -214,7 +220,7 @@ main() {
       shift
       while [[ $# -gt 0 ]]; do
         case "$1" in
-        down | next) cmd "jump_down" ;;
+          down | next) cmd "jump_down" ;;
           up | prev) cmd "jump_up" ;;
           *)
             printf 'Unknown jump direction: %s\n' "$1" >&2
