@@ -184,7 +184,8 @@ begin_daemon() {
   ensure_dirs
 
   if ls "$HYPRJUMP_FIFO" > /dev/null 2>&1; then
-    rm -f "$HYPRJUMP_FIFO"
+    printf "Warning: hyprjump state file for this Hyprland instance already exists .\nHyprjump may already be running; if you are sure it is not, please remove the following directory:\n%s" "$HYPRJUMP_DIR"
+    exit 1
   fi
   
   mkfifo "$HYPRJUMP_FIFO"
