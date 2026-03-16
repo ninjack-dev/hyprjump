@@ -35,16 +35,19 @@ declare -g CURRENT_INDEX
 declare -g IN_TRANSITION=0
 
 print_help() {
-  echo " Usage: hyprjump <command> <subcommand>"
-  echo ""
-  echo " Commands:"
-  echo "   run           Runs the watcher process responsible for maintaining the jumplist"
-  echo "   jump          Jumps to the next/previous window in the jumplist based on subcommand (default: next)"
-  echo "   Subcommands:"
-  echo "     down, next  Jumps to the next window in the jumplist (i.e. the window focused after this one)"
-  echo "     up, prev    Jumps to the previous window in the jumplist (i.e. the window focused before this one)"
-  echo "   init          Initializes the binds associated with tag mode"
-  echo "   help          Shows this help text"
+printf \
+"Usage: hyprjump <command>
+
+Commands:
+  run               Runs the watcher process responsible for maintaining the jumplist
+  jump [direction]  Jumps to the next/previous window in the jumplist based on subcommand (default: next)
+    up, prev        Jumps to the previous window in the jumplist (i.e. the window focused before this one)
+    down, next      Jumps to the next window in the jumplist (i.e. the window you jumped from)
+  init              Initializes the binds associated with tag mode
+  help              Shows this help text
+
+For a better understanding of how the jumplist is structured, see ':help jumplist' in your flavor of Vim.
+"
 }
 
 # TODO: Replace `hyprctl` with a string builder, call at end with `--batch`
