@@ -1,43 +1,32 @@
 # hyprjump
 
-`hyprjump` is a small tool which brings a few Vim-style navigation features to Hyprland, including
-- Marking windows with a character with a modal binding similar to Vim's `m{a-zA-Z}`, which can then be jumped to with a binding similar to `'a`
-- Traversing through windows similar to Vim's jumplist (`CTRL-I`/`CTRL-O`)
+Hyprjump is a small Lua script which brings a few Vim-style navigation features to Hyprland, including:
 
-**Dependencies**:
-- [`jq`](https://github.com/jqlang/jq)
-- [`socat`](https://linux.die.net/man/1/socat)
+- Traversing through window history in a similar to Vim's jumplist (`CTRL-I`/`CTRL-O`)
+- Marking windows with a character with a modal binding similar to Vim's `m{a-zA-Z}`, which can then be jumped to with a binding similar to `'{a-zA-Z}`
 
 ## Usage
+
+Install `hyprjump.lua` in your Hyprland config directory (likely `$XDG_CONFIG_HOME/hypr/`). Then, require it in your config and use the relevant features' setup functions.
+
 ### Jumplist
-If "jumplist" behavior is desired, start `hyprjump` in the background:
-```
-exec-once = hyprjump run
-```
-This allows it to track the state of the window focus history, which is vital for mimicking Vim's jumplist. From there, add calls to hyprjump which allow for window history navigation:
-```
-bindd = SUPER, O, Jump backward through window history, exec, hyprjump jump prev
-bindd = SUPER, I, Jump forward through window history, exec, hyprjump jump next
-```
-###
-If only the tagging behavior is desired, you can run the following to add a comprehensive set of keybinds for mark/jump mode:
-```
-hyprjump init 
-```
-For now, the generated bindings assume you are using `$mainMod` as an alias for your Super key in your Hyprland bindings (like is used in the [default configuration](https://github.com/hyprwm/Hyprland/blob/main/example/hyprland.conf#L222)). The generated binds are initialized as `$mainMod` + `M` to enter mark mode and `$mainMod` + `'` (apostrophe) to enter jump mode, much like in Vim. These bindings will be more customizable in the future; for now, if you would like a template to work off of, see [hyprjump.conf](./example-hyprland-config/hyprjump.conf).
 
-In `mark_mode`, you can press any alpha `a`-`z` to mark the currently focused window with that letter. It uses Hyprland's tag system to first untag all windows with that character, then tags the focused window with that character.
+```lua
+local jump_list = require("hyprjump").jump_list.setup() -- Setup initializes the jump list
+hl.bind("SUPER + O", jump_list.jump_down, { description = "Jump backward through window history" })
+hl.bind("SUPER + I", jump_list.jump_up, { description = "Jump forward through window history" })
+```
 
-In `jump_mode`, you can press any alpha key `a`-`z` to jump to the window marked with that character. You can also press `1`-`0` to jump to the `1st`-`10th`-most recently focused window in your history (independent of jumplist).
+**Note**: If mouse focus is enabled, occasionally a focus call on a specific window will rearrange items in the focus history in an unexpected way as the mouse focuses windows between the current window and the target. Hyprjump's jump functions account for this, but if you use `hl.dsp.focus()` elsewhere in your binds, then be aware that it can rarely make Hyprjump appear broken.
 
-While in either mode, you can press `Esc` to exit early if so desired.
+### Mark Mode
 
-## To-Do List
-In its current form, `hyprjump` is usable as described above. However, some minor features are WIP:
-- [ ] Add `init dump` utility which dumps a complete configuration file for use with Hyprland directly
-- [ ] Add option to pick which Hyprland instance to use
-- [ ] Misc. options for generating bindings used by `init`
-- [ ] Allow chaining of initialization and daemonization
-- [ ] If the user uses single-letter tags for their own purposes, add an option for a prefix string for the tags set by `hyprjump`
-- [ ] Add Nix flake, allowing for installation with Nix
-- [ ] Add error messages for missing dependencies
+```lua
+local mark_mode = require("hyprjump").mark_mode.setup() -- Setup creates the submaps and takes some options to customize the modes; see the annotated param type.
+-- Enter mark mode with SUPER + M; in this mode, pressing a-z will mark a window with that character, then immediately exit
+hl.bind("SUPER + M", mark_mode.enter_mark_mode, { description = "Enter mark mode" })
+-- Enter mark mode with SUPER + apostrophe ('); in this mode, pressing a-z will jump to a window with that character.
+-- You can also press 1-0 to jump to the 1st-10th most recently focused window. You can change the normalization behavior (i.e. 0-key maps to 1st, 1 to 2nd, and so on) in the setup options.
+hl.bind("SUPER + apostrophe", mark_mode.enter_jump_mode, { description = "Enter jump mode" })
+-- Press Escape in either mode (customizable with the setup options) to exit the submap without marking or jumping
+```
